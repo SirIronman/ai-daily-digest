@@ -1,0 +1,36 @@
+name: Weekly Meta Digest
+
+on:
+  schedule:
+    # 03:30 UTC = 06:30 МСК на пятницу (через 30 мин после daily в 02:00 UTC)
+    - cron: '30 3 * * 5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly meta agent
+        env:
+          CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY }}
+          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL:           ${{ secrets.TO_EMAIL }}
+        run: python weekly_meta_agent.py
