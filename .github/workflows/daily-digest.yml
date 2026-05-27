@@ -36,3 +36,13 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           TO_EMAIL:           ${{ secrets.TO_EMAIL }}
         run: python daily_digest_agent.py
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL:           ${{ secrets.TO_EMAIL }}
+          WORKFLOW_NAME:      "Daily AI Digest"
+          WORKFLOW_URL:       "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: python notify_failure.py
