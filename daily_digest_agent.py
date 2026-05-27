@@ -143,7 +143,7 @@ def call_claude(combined_content: str) -> str:
         json=payload,
         timeout=180,
     )
-   if resp.status_code != 200:
+    if resp.status_code != 200:
         print(f"[ANTHROPIC API ERROR] Status: {resp.status_code}")
         print(f"[ANTHROPIC API ERROR] Body: {resp.text}")
     resp.raise_for_status()
