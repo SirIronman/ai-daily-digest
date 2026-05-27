@@ -6,7 +6,10 @@ on:
     - cron: '0 2 * * 1-5'
   # Кнопка ручного запуска во вкладке Actions
   workflow_dispatch:
-
+  
+permissions:
+  contents: write
+  
 jobs:
   send-digest:
     runs-on: ubuntu-latest
