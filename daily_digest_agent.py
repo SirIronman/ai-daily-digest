@@ -297,6 +297,7 @@ def save_digest_to_repo(digest_text: str):
         print(f"[WARN] Git push не удался: {e}")
 
 def main():
+    raise Exception("Тест алёрта о падении")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Запуск агента...")
 
     sections = []
