@@ -108,7 +108,7 @@ def get_week_digests() -> list:
 def call_claude_meta(combined: str) -> str:
     payload = {
         "model": "claude-opus-4-7",
-        "max_tokens": 4000,
+        "max_tokens": 8000,
         "system": META_SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": f"Дайджесты за неделю:\n\n{combined}"}],
     }
