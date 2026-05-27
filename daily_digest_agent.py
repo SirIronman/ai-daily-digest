@@ -258,6 +258,26 @@ def send_email(digest_text: str):
         server.sendmail(GMAIL_ADDRESS, TO_EMAIL, msg.as_string())
     print(f"[OK] Письмо отправлено на {TO_EMAIL}")
 
+def get_recent_topics(days: int = 7) -> list:
+    """Прочитать заголовки тем из дайджестов за последние N дней."""
+    import re
+    today = datetime.now().date()
+    topics = []
+    for i in range(1, days + 1):
+        date = today - timedelta(days=i)
+        filepath = f"digests/{date.strftime('%Y-%m-%d')}.md"
+        if not os.path.exists(filepath):
+            continue
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            # Заголовок темы — следующая непустая строка после "🔹 ТЕМА N/4 · …"
+            matches = re.findall(r"🔹\s*ТЕМА\s+\d+/\d+[^\n]*\n+([^\n]{10,200})", content)
+            topics.extend([m.strip() for m in matches if m.strip()])
+        except Exception as e:
+            print(f"[WARN] Не прочитан {filepath}: {e}")
+    return topics
+
 def save_digest_to_repo(digest_text: str):
     """Сохранить дайджест в digests/ и закоммитить в репо для weekly meta."""
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -293,6 +313,13 @@ def main():
     combined = "\n\n".join(sections)
     print(f"  → Собрано {len(combined)} символов")
 
+  recent_topics = get_recent_topics(days=7)
+    if recent_topics:
+        print(f"  → Загружено {len(recent_topics)} тем за прошлую неделю (избегать повторов)")
+        combined += "\n\n=== ТЕМЫ УЖЕ ОСВЕЩАЛИСЬ ЗА ПОСЛЕДНИЕ 7 ДНЕЙ — ВЫБИРАЙ НОВЫЕ ТЕМЫ ИЛИ ДРУГИЕ УГЛЫ ===\n"
+        for t in recent_topics:
+            combined += f"- {t}\n"
+          
     print("  → Отправка в Claude API...")
     digest = call_claude(combined)
     print(f"  → Получен дайджест ({len(digest)} символов)")
