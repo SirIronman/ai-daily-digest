@@ -8,6 +8,7 @@ Daily AI/HPC/DC/OCP Digest Agent
 import os
 import sys
 import smtplib
+import subprocess
 import requests
 import feedparser
 from datetime import datetime, timedelta
@@ -257,6 +258,23 @@ def send_email(digest_text: str):
         server.sendmail(GMAIL_ADDRESS, TO_EMAIL, msg.as_string())
     print(f"[OK] Письмо отправлено на {TO_EMAIL}")
 
+def save_digest_to_repo(digest_text: str):
+    """Сохранить дайджест в digests/ и закоммитить в репо для weekly meta."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    weekday = datetime.now().strftime("%A")
+    os.makedirs("digests", exist_ok=True)
+    filepath = f"digests/{today_str}.md"
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(f"# Дайджест {today_str} ({weekday})\n\n{digest_text}\n")
+    try:
+        subprocess.run(["git", "config", "user.name", "AI Digest Bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bot@digest.local"], check=True)
+        subprocess.run(["git", "add", filepath], check=True)
+        subprocess.run(["git", "commit", "-m", f"Daily digest {today_str}"], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print(f"[OK] Дайджест сохранён: {filepath}")
+    except subprocess.CalledProcessError as e:
+        print(f"[WARN] Git push не удался: {e}")
 
 def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Запуск агента...")
@@ -281,6 +299,8 @@ def main():
 
     print("  → Отправка письма...")
     send_email(digest)
+    print("  → Сохранение в репозиторий...")
+    save_digest_to_repo(digest)
     print("[DONE]")
 
 
