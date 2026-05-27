@@ -313,23 +313,23 @@ def main():
     combined = "\n\n".join(sections)
     print(f"  → Собрано {len(combined)} символов")
 
-  recent_topics = get_recent_topics(days=7)
+    recent_topics = get_recent_topics(days=7)
     if recent_topics:
         print(f"  → Загружено {len(recent_topics)} тем за прошлую неделю (избегать повторов)")
         combined += "\n\n=== ТЕМЫ УЖЕ ОСВЕЩАЛИСЬ ЗА ПОСЛЕДНИЕ 7 ДНЕЙ — ВЫБИРАЙ НОВЫЕ ТЕМЫ ИЛИ ДРУГИЕ УГЛЫ ===\n"
         for t in recent_topics:
             combined += f"- {t}\n"
-          
+
     print("  → Отправка в Claude API...")
     digest = call_claude(combined)
     print(f"  → Получен дайджест ({len(digest)} символов)")
 
     print("  → Отправка письма...")
     send_email(digest)
+
     print("  → Сохранение в репозиторий...")
     save_digest_to_repo(digest)
     print("[DONE]")
-
 
 if __name__ == "__main__":
     try:
