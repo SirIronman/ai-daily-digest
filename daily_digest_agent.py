@@ -152,6 +152,16 @@ RSS_FEEDS = [
         "url": "https://news.google.com/rss/search?q=NVIDIA+AMD+Intel+datacenter+HPC+liquid+cooling&hl=en-US&gl=US&ceid=US:en",
         "headers": {},
     },
+    {
+        "name": "OCP — Open Compute Project (official blog)",
+        "url": "https://www.opencompute.org/blog/rss",
+        "headers": {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"},
+    },
+    {
+        "name": "ARXIV — Hardware Architecture + Distributed Computing (cs.AR + cs.DC)",
+        "url": "https://rss.arxiv.org/rss/cs.AR+cs.DC",
+        "headers": {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"},
+    },
 ]
 
 
