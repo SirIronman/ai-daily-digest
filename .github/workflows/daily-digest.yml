@@ -1,0 +1,35 @@
+name: Daily AI Digest
+
+on:
+  schedule:
+    # 02:00 UTC = 05:00 MSK (Москва UTC+3), будни (пн-пт)
+    - cron: '0 2 * * 1-5'
+  # Кнопка ручного запуска во вкладке Actions
+  workflow_dispatch:
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run digest agent
+        env:
+          CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY }}
+          NEWSAPI_KEY:        ${{ secrets.NEWSAPI_KEY }}
+          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL:           ${{ secrets.TO_EMAIL }}
+        run: python daily_digest_agent.py
