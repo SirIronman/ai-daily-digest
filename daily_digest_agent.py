@@ -128,7 +128,7 @@ def call_claude(combined_content: str) -> str:
         + combined_content
     )
     payload = {
-        "model": "claude-sonnet-4-6",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 4000,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
