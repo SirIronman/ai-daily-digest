@@ -9,6 +9,7 @@ import os
 import sys
 import smtplib
 import subprocess
+import urllib.parse
 import requests
 import feedparser
 from datetime import datetime, timedelta
@@ -146,6 +147,28 @@ Whitelist: #GPU #Accelerators #CUDA #ROCm #HPC #AIInfrastructure #OpenCompute #O
 - Темы 1–3: AI Infrastructure / HPC / Data Center / OCP из новостных источников
 - Тема 4: бумага с HuggingFace с практическим бизнес-применением (inference cost reduction, enterprise deployment, AI agents для автоматизации, edge inference, model compression). Чисто академические бумаги — исключить. Категория: «AI Business Applications».
 
+После четырёх тем добавь отдельный блок «Новости отрасли» по правилам ниже.
+
+# 🏭 НОВОСТИ ОТРАСЛИ (1 новость, отдельный блок после 4 тем)
+
+Тебе передан список INDUSTRY_NEWS из источников Vertiv, Eaton, WBT и общего отраслевого потока Google News. Выбери ОДНУ новость, наиболее релевантную инфраструктуре AI/HPC/ЦОД, приоритет свежим.
+
+Формат строго:
+
+🏭 НОВОСТИ ОТРАСЛИ
+
+📌 ФАКТ
+1–2 предложения с конкретикой. Ссылка на первоисточник. Дата.
+
+🎯 РЕЛЕВАНТНОСТЬ
+Привязка к компоненту платформы (BOM / граф совместимости / TCO / документация / B2G) в одном предложении.
+
+Правила блока:
+- Источники вендорские, тон маркетинговый. Бери ТОЛЬКО фактическую часть (что выпущено, параметры, событие). Рекламные эпитеты отбрасывай на self-audit.
+- Полный прогноз с тремя сценариями к этому блоку НЕ применяй. Это новостная справка, не глубокая аналитика.
+- BACKLOG-ITEM и черновик поста к этому блоку НЕ добавляй.
+- Если все новости из списка дублируют темы дайджеста или прошлых дней, напиши: «Новых релевантных новостей отрасли нет».
+
 Язык — русский. Аббревиатуры и имена собственные в оригинале."""
 
 RSS_FEEDS = [
@@ -174,6 +197,20 @@ RSS_FEEDS = [
         "url": "https://rss.arxiv.org/rss/cs.AR+cs.DC",
         "headers": {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"},
     },
+]
+
+
+def gnews_rss(query: str, window: str = "7d") -> str:
+    """Построить URL Google News RSS-поиска с окном свежести."""
+    q = urllib.parse.quote_plus(f"{query} when:{window}")
+    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+
+
+INDUSTRY_NEWS_FEEDS = [
+    gnews_rss("site:vertiv.com/en-us/about/news-and-insights", "7d"),
+    gnews_rss("site:eaton.com (data center OR UPS OR power distribution OR cooling)", "7d"),
+    gnews_rss("site:wbt.com.au", "14d"),
+    gnews_rss("data center infrastructure OR liquid cooling OR rack power density", "2d"),
 ]
 
 
@@ -228,6 +265,39 @@ def fetch_huggingface(max_items: int = 15) -> str:
         return "\n".join(lines)
     except Exception as e:
         return f"=== HUGGINGFACE ===\nОшибка: {e}"
+
+
+def collect_industry_news(recent_titles: list) -> list:
+    """Собрать новости отрасли из вендорских источников через Google News.
+    Дедупликация внутри прогона и против тем за последние N дней."""
+    items = []
+    seen = set()
+    for feed_url in INDUSTRY_NEWS_FEEDS:
+        try:
+            resp = requests.get(
+                feed_url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"},
+                timeout=20,
+            )
+            parsed = feedparser.parse(resp.text)
+            for entry in parsed.entries[:5]:
+                title = getattr(entry, "title", "").strip()
+                link = getattr(entry, "link", "")
+                key = title.lower()[:50]
+                if not title or key in seen:
+                    continue
+                if any(key[:40] in t.lower() for t in recent_titles):
+                    continue
+                seen.add(key)
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "published": getattr(entry, "published", ""),
+                    "source": parsed.feed.get("title", ""),
+                })
+        except Exception as e:
+            print(f"[WARN] Industry feed error {feed_url}: {e}")
+    return items
 
 
 def call_claude(combined_content: str) -> str:
@@ -341,6 +411,16 @@ def main():
         combined += "\n\n=== ТЕМЫ УЖЕ ОСВЕЩАЛИСЬ ЗА ПОСЛЕДНИЕ 7 ДНЕЙ — ВЫБИРАЙ НОВЫЕ ТЕМЫ ИЛИ ДРУГИЕ УГЛЫ ===\n"
         for t in recent_topics:
             combined += f"- {t}\n"
+
+    print("  → Сбор новостей отрасли (Vertiv / Eaton / WBT / Google News)...")
+    industry = collect_industry_news(recent_topics)
+    print(f"  → Собрано {len(industry)} кандидатов новостей отрасли")
+    industry_block = "\n".join(
+        f"- [{it['source']}] {it['title']} ({it['published']}) {it['link']}"
+        for it in industry
+    ) or "Новостей отрасли за период нет."
+    combined += "\n\n=== INDUSTRY_NEWS (кандидаты для блока «Новости отрасли», выбери ОДНУ) ===\n"
+    combined += industry_block
 
     print("  → Отправка в Claude API...")
     digest = call_claude(combined)
