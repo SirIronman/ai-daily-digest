@@ -323,7 +323,7 @@ def call_claude(combined_content: str) -> str:
         + combined_content
     )
     payload = {
-        "model": "claude-opus-4-7",
+        "model": "claude-opus-4-8",
         "max_tokens": 8000,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
