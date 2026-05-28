@@ -3,7 +3,7 @@ Weekly Meta Digest Agent
 =========================
 Запускается каждую пятницу в 06:30 МСК.
 Читает дайджесты текущей рабочей недели из digests/, делает мета-анализ
-через Claude Opus 4.7, отправляет результат email.
+через Claude Opus 4.8, отправляет результат email.
 """
 
 import os
@@ -107,7 +107,7 @@ def get_week_digests() -> list:
 
 def call_claude_meta(combined: str) -> str:
     payload = {
-        "model": "claude-opus-4-7",
+        "model": "claude-opus-4-8",
         "max_tokens": 8000,
         "system": META_SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": f"Дайджесты за неделю:\n\n{combined}"}],
