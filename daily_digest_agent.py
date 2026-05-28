@@ -12,7 +12,7 @@ import subprocess
 import urllib.parse
 import requests
 import feedparser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -231,7 +231,7 @@ def fetch_rss(feed: dict, max_items: int = 12) -> str:
 
 def fetch_newsapi(api_key: str, max_items: int = 12) -> str:
     try:
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
         url = (
             "https://newsapi.org/v2/everything"
             "?q=(AI+infrastructure+OR+HPC+OR+datacenter+OR+%22Open+Compute+Project%22)"
@@ -312,21 +312,28 @@ def call_claude(combined_content: str) -> str:
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
     }
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json=payload,
-        timeout=180,
-    )
-    if resp.status_code != 200:
-        print(f"[ANTHROPIC API ERROR] Status: {resp.status_code}")
-        print(f"[ANTHROPIC API ERROR] Body: {resp.text}")
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    last_error = None
+    for attempt in range(1, 3):
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": CLAUDE_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json=payload,
+                timeout=600,
+            )
+            if resp.status_code != 200:
+                print(f"[ANTHROPIC API ERROR] Status: {resp.status_code}")
+                print(f"[ANTHROPIC API ERROR] Body: {resp.text}")
+            resp.raise_for_status()
+            return resp.json()["content"][0]["text"]
+        except requests.exceptions.Timeout as e:
+            last_error = e
+            print(f"[WARN] Таймаут Claude API, попытка {attempt}/2")
+    raise last_error
 
 
 def send_email(digest_text: str):
