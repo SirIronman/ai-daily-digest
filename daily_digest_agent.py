@@ -7,6 +7,8 @@ Daily AI/HPC/DC/OCP Digest Agent
 
 import os
 import sys
+import json
+import random
 import smtplib
 import subprocess
 import urllib.parse
@@ -169,7 +171,21 @@ Whitelist: #GPU #Accelerators #CUDA #ROCm #HPC #AIInfrastructure #OpenCompute #O
 - BACKLOG-ITEM и черновик поста к этому блоку НЕ добавляй.
 - Если все новости из списка дублируют темы дайджеста или прошлых дней, напиши: «Новых релевантных новостей отрасли нет».
 
-Язык — русский. Аббревиатуры и имена собственные в оригинале."""
+Язык — русский. Аббревиатуры и имена собственные в оригинале.
+
+# 💬 ЦИТАТА ДНЯ (отдельный блок в самом конце)
+
+Тебе передан QUOTE_OF_DAY. Вставь цитату ДОСЛОВНО, без перевода, без изменения формулировки. Формат строго:
+
+💬 ЦИТАТА ДНЯ
+
+[текст цитаты] — [автор]
+Источник: [источник]
+
+Правила:
+- НЕ сочиняй цитаты. НЕ меняй ни одного слова. Бери только то, что в QUOTE_OF_DAY.
+- НЕ переводи цитату на русский, оставляй язык оригинала.
+- Если QUOTE_OF_DAY пуст, блок не выводи."""
 
 RSS_FEEDS = [
     {
@@ -395,6 +411,49 @@ def save_digest_to_repo(digest_text: str):
     except subprocess.CalledProcessError as e:
         print(f"[WARN] Git push не удался: {e}")
 
+def get_shown_quotes(days: int = 30) -> list:
+    """Ключи цитат, показанных за последние N дней (для дедупликации)."""
+    import re
+    today = datetime.now().date()
+    keys = []
+    for i in range(1, days + 1):
+        fp = f"digests/{(today - timedelta(days=i)).strftime('%Y-%m-%d')}.md"
+        if not os.path.exists(fp):
+            continue
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                content = f.read()
+            for line in content.splitlines():
+                line = line.strip()
+                if not line.startswith("💬") or "—" not in line:
+                    continue
+                body = line.lstrip("💬").strip()
+                # формат строки: [цитата] — [автор]
+                quote_part, _, author = body.rpartition("—")
+                quote_part = quote_part.strip()
+                author = author.strip()
+                if quote_part and author:
+                    keys.append(f"{author}:{quote_part[:30]}")
+        except Exception:
+            pass
+    return keys
+
+
+def select_quotes(shown_keys: list, n: int = 1) -> list:
+    """Выбрать N цитат из quotes.json, исключив уже показанные."""
+    try:
+        with open("quotes.json", "r", encoding="utf-8") as f:
+            pool = json.load(f)
+    except Exception as e:
+        print(f"[WARN] quotes.json не прочитан: {e}")
+        return []
+    fresh = [q for q in pool
+             if f"{q['author']}:{q['quote'][:30]}" not in shown_keys]
+    if not fresh:
+        fresh = pool  # пул исчерпан за окно дедупликации, идём на второй круг
+    return random.sample(fresh, min(n, len(fresh)))
+
+
 def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Запуск агента...")
 
@@ -428,6 +487,16 @@ def main():
     ) or "Новостей отрасли за период нет."
     combined += "\n\n=== INDUSTRY_NEWS (кандидаты для блока «Новости отрасли», выбери ОДНУ) ===\n"
     combined += industry_block
+
+    print("  → Выбор цитаты дня...")
+    shown_quotes = get_shown_quotes(days=30)
+    quotes = select_quotes(shown_quotes, n=1)  # n=2 если хочешь две цитаты
+    quotes_block = "\n".join(
+        f'{q["quote"]} — {q["author"]} | Источник: {q["source"]}' for q in quotes
+    ) or "Цитат нет."
+    print(f"  → Цитата выбрана: {quotes[0]['author'] if quotes else 'нет'}")
+    combined += "\n\n=== QUOTE_OF_DAY (вставь дословно в блок цитаты, НЕ меняй текст) ===\n"
+    combined += quotes_block
 
     print("  → Отправка в Claude API...")
     digest = call_claude(combined)
