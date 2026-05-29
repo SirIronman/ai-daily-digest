@@ -3,7 +3,7 @@ name: Daily AI Digest
 on:
   schedule:
     # 02:00 UTC = 05:00 MSK (Москва UTC+3), будни (пн-пт)
-    - cron: '50 3 * * *'
+    - cron: '17 2 * * 1-5'
   # Кнопка ручного запуска во вкладке Actions
   workflow_dispatch:
   
