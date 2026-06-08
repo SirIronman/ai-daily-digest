@@ -1,7 +1,7 @@
 """
 Daily AI/HPC/DC/OCP Digest Agent
 =================================
-Запускается через GitHub Actions по будням в 03:00 МСК.
+Запускается через GitHub Actions по будням в 05:00 МСК.
 Все секреты берутся из переменных окружения (GitHub Secrets).
 """
 
@@ -12,6 +12,7 @@ import random
 import smtplib
 import subprocess
 import urllib.parse
+from urllib.parse import urlparse
 import requests
 import feedparser
 from datetime import datetime, timedelta, timezone
@@ -28,8 +29,8 @@ SYSTEM_PROMPT = """Ты аналитический агент мониторин
 
 # ЧИТАТЕЛЬ
 Основатель AI Distribution Platform: инфраструктурный архитектор. НЕ продавец и НЕ маркетолог.
-Компоненты платформы: BOM-генератор, граф совместимости, генератор документации, B2B-направление.
-Целевые клиенты: VAR-партнёры, системные интеграторы, B2B-сегмент.
+Компоненты платформы: BOM-генератор, граф совместимости, TCO-калькулятор, генератор документации, B2G-направление.
+Целевые клиенты: VAR-партнёры, системные интеграторы, B2G-сегмент.
 
 # ЖАНР
 Архитектор-аналитик. Спокойная инженерная констатация. Не продающий копирайт.
@@ -39,8 +40,9 @@ SYSTEM_PROMPT = """Ты аналитический агент мониторин
 ## 1. Источники
 ЗАПРЕЩЕНО как первоисточник:
 - globenewswire.com, prnewswire.com, businesswire.com, accesswire.com (PR-агрегаторы)
-- finance.yahoo.com
-- Telegram (как первоисточник; как сигнал — допустимо)
+- finance.yahoo.com, investing.com
+- LinkedIn-посты без указанного первоисточника
+- Reddit, форумы, Telegram (как первоисточник; как сигнал — допустимо)
 - AI-summaries без атрибуции
 Если факт известен только из этих источников — пометь [НЕ ВЕРИФИЦИРОВАНО] или исключи тему.
 Приоритет: вендорские newsroom (nvidia.com, amd.com, intel.com, supermicro.com, dell.com, hpe.com), opencompute.org, semianalysis.com, servethehome.com, nextplatform.com, theregister.com, hpcwire.com, anandtech.com, arxiv.org.
@@ -71,7 +73,7 @@ SYSTEM_PROMPT = """Ты аналитический агент мониторин
 Что изменилось относительно предыдущего состояния отрасли. Без оценок и риторики.
 
 🎯 РЕЛЕВАНТНОСТЬ ДЛЯ AI DISTRIBUTION PLATFORM
-Привязка к компоненту (BOM / граф совместимости / TCO / документация / B2B). Степень: высокая/средняя/низкая, обоснование в одно предложение.
+Привязка к компоненту (BOM / граф совместимости / TCO / документация / B2G). Степень: высокая/средняя/низкая, обоснование в одно предложение.
 
 🔮 ПРОГНОЗ НА 12 МЕСЯЦЕВ
 Три сценария по правилам п.3.
@@ -178,7 +180,6 @@ Whitelist: #GPU #Accelerators #CUDA #ROCm #HPC #AIInfrastructure #OpenCompute #O
 
 💬 ЦИТАТА ДНЯ
 
-Писать на русском языке
 [текст цитаты] — [автор]
 Источник: [источник]
 
@@ -187,11 +188,60 @@ Whitelist: #GPU #Accelerators #CUDA #ROCm #HPC #AIInfrastructure #OpenCompute #O
 - НЕ переводи цитату на русский, оставляй язык оригинала.
 - Если QUOTE_OF_DAY пуст, блок не выводи."""
 
+# ──────────────────────────────────────────────────────────────────────
+# PRE-FILTER (Фикс 1): отсечение мусора ДО отправки в Claude
+# ──────────────────────────────────────────────────────────────────────
+
+MAX_ENTRY_AGE_DAYS = 7  # отбрасываем всё старше 7 дней
+
+# Чёрный список доменов: PR-агрегаторы, цитатники, финансовые сводки,
+# мелкие агрегаторы. Совпадает с регламентом п.1 + расширения по факту.
+BLACKLISTED_DOMAINS = {
+    "globenewswire.com", "prnewswire.com", "businesswire.com",
+    "accesswire.com", "newswire.com", "einpresswire.com",
+    "finance.yahoo.com", "investing.com", "barchart.com",
+    "menafn.com", "pulse2.com", "brainyquote.com", "goodreads.com",
+    "seekingalpha.com",
+}
+
+
+def parse_entry_date(entry):
+    """Извлечь дату публикации из feedparser entry. Возвращает aware datetime или None."""
+    for attr in ("published_parsed", "updated_parsed"):
+        ts = getattr(entry, attr, None)
+        if ts:
+            try:
+                return datetime(*ts[:6], tzinfo=timezone.utc)
+            except Exception:
+                pass
+    return None
+
+
+def is_entry_fresh(entry, max_days: int = MAX_ENTRY_AGE_DAYS) -> bool:
+    """True если entry не старше max_days. Без даты — пропускаем (нельзя оценить)."""
+    dt = parse_entry_date(entry)
+    if dt is None:
+        return True
+    age = datetime.now(timezone.utc) - dt
+    return age <= timedelta(days=max_days)
+
+
+def is_source_allowed(entry) -> bool:
+    """False если домен entry в blacklist."""
+    link = getattr(entry, "link", "") or ""
+    try:
+        host = (urlparse(link).hostname or "").replace("www.", "").lower()
+    except Exception:
+        return True
+    return host not in BLACKLISTED_DOMAINS
+
+
 RSS_FEEDS = [
     {
         "name": "REDDIT (HPC / ML / DataCenter / OCP)",
         "url": "https://www.reddit.com/r/HPC+MachineLearning+artificial+DataCenter+opencompute/.rss?limit=15",
         "headers": {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"},
+        "signal_only": True,
     },
     {
         "name": "GOOGLE NEWS — AI Infrastructure / OCP",
@@ -234,12 +284,28 @@ def fetch_rss(feed: dict, max_items: int = 12) -> str:
     try:
         resp = requests.get(feed["url"], headers=feed["headers"], timeout=20)
         parsed = feedparser.parse(resp.text)
-        lines = [f"=== {feed['name']} ==="]
-        for entry in parsed.entries[:max_items]:
+        signal_only = feed.get("signal_only", False)
+        header = f"=== {feed['name']} ==="
+        if signal_only:
+            header += " [SIGNAL ONLY — НЕ ЦИТИРОВАТЬ КАК ИСТОЧНИК В ФАКТ]"
+        lines = [header]
+        kept = 0
+        for entry in parsed.entries:
+            if kept >= max_items:
+                break
+            # Фильтр 1: свежесть (старше 7 дней — отбрасываем)
+            if not is_entry_fresh(entry):
+                continue
+            # Фильтр 2: домен не в blacklist (только для не-signal источников)
+            if not signal_only and not is_source_allowed(entry):
+                continue
             title = getattr(entry, "title", "").strip()
             summary = getattr(entry, "summary", "")[:300].strip()
             published = getattr(entry, "published", "")
             lines.append(f"• {title} ({published})\n  {summary}")
+            kept += 1
+        if kept == 0:
+            lines.append("(после фильтра свежесть/blacklist нет записей)")
         return "\n".join(lines)
     except Exception as e:
         return f"=== {feed['name']} ===\nОшибка: {e}"
@@ -285,7 +351,8 @@ def fetch_huggingface(max_items: int = 15) -> str:
 
 def collect_industry_news(recent_titles: list) -> list:
     """Собрать новости отрасли из вендорских источников через Google News.
-    Дедупликация внутри прогона и против тем за последние N дней."""
+    Дедупликация внутри прогона и против тем за последние N дней.
+    Фильтрация: свежесть ≤ 7 дней, домен не в blacklist."""
     items = []
     seen = set()
     for feed_url in INDUSTRY_NEWS_FEEDS:
@@ -296,7 +363,13 @@ def collect_industry_news(recent_titles: list) -> list:
                 timeout=20,
             )
             parsed = feedparser.parse(resp.text)
-            for entry in parsed.entries[:5]:
+            for entry in parsed.entries[:8]:
+                # Фильтр свежести
+                if not is_entry_fresh(entry):
+                    continue
+                # Фильтр blacklist
+                if not is_source_allowed(entry):
+                    continue
                 title = getattr(entry, "title", "").strip()
                 link = getattr(entry, "link", "")
                 key = title.lower()[:50]
@@ -323,7 +396,7 @@ def call_claude(combined_content: str) -> str:
         + combined_content
     )
     payload = {
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-4-7",
         "max_tokens": 8000,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
