@@ -150,7 +150,17 @@ Whitelist: #GPU #Accelerators #CUDA #ROCm #HPC #AIInfrastructure #OpenCompute #O
 - Темы 1–3: AI Infrastructure / HPC / Data Center / OCP из новостных источников
 - Тема 4: бумага с HuggingFace с практическим бизнес-применением (inference cost reduction, enterprise deployment, AI agents для автоматизации, edge inference, model compression). Чисто академические бумаги — исключить. Категория: «AI Business Applications».
 
-После четырёх тем добавь отдельный блок «Новости отрасли» по правилам ниже.
+# ПРАВИЛА ОТБОРА И ЦИТИРОВАНИЯ (критично, проверяется на выходе)
+
+1. Reddit, форумы, Telegram и секции с маркером [SIGNAL ONLY] — это ТОЛЬКО сигнал, что в отрасли обсуждается тема. Их НЕЛЬЗЯ цитировать в поле ФАКТ как источник. Никакой формулировки «по сообщению в r/datacenter» в ФАКТ быть не должно.
+
+2. Если новость пришла только из Reddit или signal-only секции, а первоисточник нигде в других feed не виден напрямую — ОТБРОСЬ тему. Не делай тему вообще. Не пиши [НЕ ВЕРИФИЦИРОВАНО] и не оставляй Reddit в ФАКТ как обход правила.
+
+3. Если в Reddit-обсуждении упомянут конкретный первоисточник (например, статья в Power Magazine), но самой статьи в твоих feed нет — это значит, что её нельзя верифицировать. ОТБРОСЬ тему. Не пиши «Power Magazine со ссылкой на r/datacenter» — это худший вариант, маскировка Reddit-цитаты.
+
+4. Лучше 3 темы вместо 4, чем 4-я тема с непроверенным первоисточником. Если после отбора набирается только 3 валидные темы — выдай 3, явно укажи в конце: «Темы 4 нет: не нашлось проверяемого первоисточника на сегодня».
+
+После четырёх (или меньше) тем добавь отдельный блок «Новости отрасли» по правилам ниже.
 
 # 🏭 НОВОСТИ ОТРАСЛИ (1 новость, отдельный блок после 4 тем)
 
@@ -204,6 +214,16 @@ BLACKLISTED_DOMAINS = {
     "seekingalpha.com",
 }
 
+# Чёрный список ИМЁН источников. Google News RSS оборачивает ссылки в
+# news.google.com, поэтому фильтр по hostname не срабатывает. Реальное
+# имя источника живёт в entry.source.title или в суффиксе title после " - ".
+BLACKLISTED_SOURCE_NAMES = {
+    "pulse 2.0", "pulse2", "brainyquote", "goodreads",
+    "globenewswire", "pr newswire", "business wire", "accesswire",
+    "yahoo finance", "investing.com", "menafn", "seeking alpha",
+    "barchart",
+}
+
 
 def parse_entry_date(entry):
     """Извлечь дату публикации из feedparser entry. Возвращает aware datetime или None."""
@@ -226,14 +246,42 @@ def is_entry_fresh(entry, max_days: int = MAX_ENTRY_AGE_DAYS) -> bool:
     return age <= timedelta(days=max_days)
 
 
+def extract_source_name(entry) -> str:
+    """Извлечь имя источника из entry разными способами (для Google News обёрток)."""
+    # 1. entry.source.title (feedparser нормально парсит <source>)
+    src = getattr(entry, "source", None)
+    if src is not None:
+        name = None
+        if hasattr(src, "title"):
+            name = src.title
+        elif isinstance(src, dict):
+            name = src.get("title")
+        if name:
+            return str(name).strip().lower()
+    # 2. суффикс title после " - " (типичный паттерн Google News)
+    title = getattr(entry, "title", "") or ""
+    if " - " in title:
+        return title.rsplit(" - ", 1)[-1].strip().lower()
+    return ""
+
+
 def is_source_allowed(entry) -> bool:
-    """False если домен entry в blacklist."""
+    """False если домен или имя источника в blacklist."""
+    # Проверка по hostname (работает для прямых RSS не из Google News)
     link = getattr(entry, "link", "") or ""
     try:
         host = (urlparse(link).hostname or "").replace("www.", "").lower()
     except Exception:
-        return True
-    return host not in BLACKLISTED_DOMAINS
+        host = ""
+    if host in BLACKLISTED_DOMAINS:
+        return False
+    # Проверка по имени источника (работает для Google News обёрток)
+    source_name = extract_source_name(entry)
+    if source_name:
+        for bad in BLACKLISTED_SOURCE_NAMES:
+            if bad in source_name:
+                return False
+    return True
 
 
 RSS_FEEDS = [
